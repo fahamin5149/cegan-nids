@@ -1,0 +1,16 @@
+# ── PyTorch (CUDA 12.4) ────────────────────────────────────────────────────────
+# Install with:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+torch==2.6.0+cu124
+torchvision==0.21.0+cu124
+
+# ── Data / ML ──────────────────────────────────────────────────────────────────
+numpy==2.4.3
+pandas==3.0.2
+scikit-learn==1.8.0
+scipy==1.17.1
+imbalanced-learn==0.14.1
+
+# ── Visualisation ──────────────────────────────────────────────────────────────
+matplotlib==3.10.9
+seaborn==0.13.2

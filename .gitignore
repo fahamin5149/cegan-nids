@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+.venv*/
+venv/
+env/
+
+# Datasets (large files — download separately via Kaggle / UNB)
+data/
+
+# Experiment logs and raw outputs
+results/run_all*.log
+results/experiment_log.txt
+
+# Keep results/tables/ (paper numbers) but ignore checkpoints
+results/checkpoints/
+results/*.pkl
+results/*.pt
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Kaggle credentials (never commit)
+kaggle.json
+.kaggle/
