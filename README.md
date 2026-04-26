@@ -174,7 +174,7 @@ The full argument reference:
 
 ---
 
-### Machine 1 (Your Laptop) — NSL-KDD source scenarios
+### Machine 1 (Amin Laptop) — NSL-KDD source scenarios
 
 Activate venv first: `.venv311\Scripts\activate`
 
@@ -206,7 +206,7 @@ git push
 
 ---
 
-### Machine 2 (Friend's Laptop) — UNSW-NB15 source + CIC-IDS2017 Scenario A
+### Machine 2 (Sarim's Laptop) — UNSW-NB15 source + CIC-IDS2017 Scenario A
 
 Activate venv first: `.venv311\Scripts\activate`
 
