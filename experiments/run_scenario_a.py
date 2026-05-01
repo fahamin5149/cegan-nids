@@ -39,7 +39,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n_layers",   type=int,   default=3)
     p.add_argument("--n_estimators", type=int, default=100,  help="Trees per classifier")
     p.add_argument("--synthetic",  action="store_true",      help="Force synthetic data")
-    p.add_argument("--save_ckpt",  action="store_true",      help="Save GAN checkpoint")
+    p.add_argument("--save_ckpt",  action="store_true",      help="Save GAN checkpoint after training")
+    p.add_argument("--resume_ckpt", action="store_true",     help="Load existing checkpoint and train for --epochs more")
     return p.parse_args()
 
 
@@ -61,6 +62,9 @@ def main() -> None:
     )
 
     # -- Train CE-GAN ----------------------------------------------------------
+    ckpt_path = _PROJECT_ROOT / "results" / "checkpoints" / f"scen_a_{args.dataset}.pt"
+    ckpt_path.parent.mkdir(parents=True, exist_ok=True)
+
     print("\nTraining CE-GAN...")
     cfg = CEGANConfig(
         n_features=n_feat, n_classes=n_cls,
@@ -68,12 +72,17 @@ def main() -> None:
         device=device_str,
     )
     model = CEGAN(cfg)
+    if args.resume_ckpt:
+        if ckpt_path.exists():
+            model.load_checkpoint(ckpt_path)
+            print(f"  Resumed from {ckpt_path.name} — training {args.epochs} more epochs")
+        else:
+            print(f"  WARNING: --resume_ckpt set but {ckpt_path.name} not found — starting fresh")
     train_gan(model, X_train, y_train, args.epochs, args.batch_size, label="GAN")
 
     if args.save_ckpt:
-        ckpt = _PROJECT_ROOT / "results" / "checkpoints" / f"scen_a_{args.dataset}_final.pt"
-        model.save_checkpoint(ckpt)
-        print(f"  Checkpoint -> {ckpt.name}")
+        model.save_checkpoint(ckpt_path)
+        print(f"  Checkpoint saved -> {ckpt_path.name}")
 
     # -- Augment training set --------------------------------------------------
     print(f"\nGenerating {args.n_aug} synthetic samples per class ({n_cls} classes)...")

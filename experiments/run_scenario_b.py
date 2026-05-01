@@ -44,7 +44,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--projector_epochs", type=int, default=200,
                    help="FeatureHarmonizer projector training epochs")
     p.add_argument("--synthetic",  action="store_true", help="Force synthetic data")
-    p.add_argument("--save_ckpt",  action="store_true")
+    p.add_argument("--save_ckpt",  action="store_true", help="Save GAN checkpoint after training")
+    p.add_argument("--resume_ckpt", action="store_true", help="Load existing checkpoint and train for --epochs more")
     return p.parse_args()
 
 
@@ -83,6 +84,9 @@ def main() -> None:
           f"Covered: {s['n_total_covered']}/{s['n_target_feat']}")
 
     # -- Train CE-GAN on source ------------------------------------------------
+    ckpt_path = _PROJECT_ROOT / "results" / "checkpoints" / f"scen_b_{args.source}_{args.target}.pt"
+    ckpt_path.parent.mkdir(parents=True, exist_ok=True)
+
     print(f"\nTraining CE-GAN on {args.source}...")
     cfg = CEGANConfig(
         n_features=n_feat_src, n_classes=n_cls_src,
@@ -90,12 +94,17 @@ def main() -> None:
         device=device_str,
     )
     model = CEGAN(cfg)
+    if args.resume_ckpt:
+        if ckpt_path.exists():
+            model.load_checkpoint(ckpt_path)
+            print(f"  Resumed from {ckpt_path.name} — training {args.epochs} more epochs")
+        else:
+            print(f"  WARNING: --resume_ckpt set but {ckpt_path.name} not found — starting fresh")
     train_gan(model, X_src_train, y_src_train, args.epochs, args.batch_size, label="GAN-src")
 
     if args.save_ckpt:
-        ckpt = _PROJECT_ROOT / "results" / "checkpoints" / f"scen_b_{args.source}_final.pt"
-        model.save_checkpoint(ckpt)
-        print(f"  Checkpoint -> {ckpt.name}")
+        model.save_checkpoint(ckpt_path)
+        print(f"  Checkpoint saved -> {ckpt_path.name}")
 
     # -- Generate source-domain synthetic samples ------------------------------
     print(f"\nGenerating {args.n_aug} synthetic samples per class on source domain...")

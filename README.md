@@ -140,7 +140,7 @@ Run this to confirm all three datasets load correctly:
 .venv311\Scripts\python.exe -c "
 import sys; sys.path.insert(0, '.')
 from src.datasets import DatasetLoader
-for name, cap in [('nsl_kdd', None), ('unsw_nb15', 100_000), ('cic_ids2017', 100_000)]:
+for name, cap in [('nsl_kdd', 50_000), ('unsw_nb15', 50_000), ('cic_ids2017', 50_000)]:
     dl = DatasetLoader(name, max_samples=cap)
     Xtr, Xte, ytr, yte = dl.load()
     print(f'{name}: train={Xtr.shape}, classes={dl.num_classes}')
@@ -149,9 +149,9 @@ for name, cap in [('nsl_kdd', None), ('unsw_nb15', 100_000), ('cic_ids2017', 100
 
 Expected output:
 ```
-nsl_kdd:     train=torch.Size([118800, 41]), classes=34
-unsw_nb15:   train=torch.Size([80000,  43]), classes=10
-cic_ids2017: train=torch.Size([80000,  78]), classes=12
+nsl_kdd:     train=torch.Size([40000, 41]), classes=34
+unsw_nb15:   train=torch.Size([40000, 43]), classes=10
+cic_ids2017: train=torch.Size([40000, 78]), classes=12
 ```
 
 ---
@@ -162,7 +162,7 @@ The experiment is split across two machines. Both machines need all three datase
 
 The full argument reference:
 ```
---epochs 100          # GAN training epochs
+--epochs 50           # GAN training epochs
 --batch_size 256
 --n_aug 500           # synthetic samples per class
 --d_model 128         # transformer hidden size
@@ -178,30 +178,28 @@ The full argument reference:
 
 Activate venv first: `.venv311\Scripts\activate`
 
-Run these **5 scripts in order** (each takes ~1-2 hours):
+Run these **5 scripts in order** (each takes ~30-60 minutes):
 
 ```powershell
 # Scenario A — within-dataset on NSL-KDD
-python experiments/run_scenario_a.py --dataset nsl_kdd --epochs 100 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100
+python experiments/run_scenario_a.py --dataset nsl_kdd --epochs 50 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100
 
 # Scenario B — NSL-KDD as source, transfer to UNSW-NB15
-python experiments/run_scenario_b.py --source nsl_kdd --target unsw_nb15 --epochs 100 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
+python experiments/run_scenario_b.py --source nsl_kdd --target unsw_nb15 --epochs 50 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
 
 # Scenario B — NSL-KDD as source, transfer to CIC-IDS2017
-python experiments/run_scenario_b.py --source nsl_kdd --target cic_ids2017 --epochs 100 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
+python experiments/run_scenario_b.py --source nsl_kdd --target cic_ids2017 --epochs 50 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
 
 # Scenario C — NSL-KDD as source, MMD-aligned transfer to UNSW-NB15
-python experiments/run_scenario_c.py --source nsl_kdd --target unsw_nb15 --epochs 100 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
+python experiments/run_scenario_c.py --source nsl_kdd --target unsw_nb15 --epochs 50 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
 
 # Scenario C — NSL-KDD as source, MMD-aligned transfer to CIC-IDS2017
-python experiments/run_scenario_c.py --source nsl_kdd --target cic_ids2017 --epochs 100 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
+python experiments/run_scenario_c.py --source nsl_kdd --target cic_ids2017 --epochs 50 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
 ```
 
 After all 5 finish, commit and push:
 ```powershell
-git add results/tables/
-git commit -m "Add Machine 1 results (nsl_kdd source)"
-git push
+git add results/tables/; git commit -m "Add results"; git push
 ```
 
 ---
@@ -214,22 +212,22 @@ Run these **6 scripts in order**:
 
 ```powershell
 # Scenario A — within-dataset on UNSW-NB15
-python experiments/run_scenario_a.py --dataset unsw_nb15 --epochs 100 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100
+python experiments/run_scenario_a.py --dataset unsw_nb15 --epochs 50 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100
 
 # Scenario A — within-dataset on CIC-IDS2017
-python experiments/run_scenario_a.py --dataset cic_ids2017 --epochs 100 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100
+python experiments/run_scenario_a.py --dataset cic_ids2017 --epochs 50 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100
 
 # Scenario B — UNSW-NB15 as source, transfer to NSL-KDD
-python experiments/run_scenario_b.py --source unsw_nb15 --target nsl_kdd --epochs 100 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
+python experiments/run_scenario_b.py --source unsw_nb15 --target nsl_kdd --epochs 50 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
 
 # Scenario B — UNSW-NB15 as source, transfer to CIC-IDS2017
-python experiments/run_scenario_b.py --source unsw_nb15 --target cic_ids2017 --epochs 100 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
+python experiments/run_scenario_b.py --source unsw_nb15 --target cic_ids2017 --epochs 50 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
 
 # Scenario C — UNSW-NB15 as source, MMD-aligned transfer to NSL-KDD
-python experiments/run_scenario_c.py --source unsw_nb15 --target nsl_kdd --epochs 100 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
+python experiments/run_scenario_c.py --source unsw_nb15 --target nsl_kdd --epochs 50 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
 
 # Scenario C — UNSW-NB15 as source, MMD-aligned transfer to CIC-IDS2017
-python experiments/run_scenario_c.py --source unsw_nb15 --target cic_ids2017 --epochs 100 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
+python experiments/run_scenario_c.py --source unsw_nb15 --target cic_ids2017 --epochs 50 --batch_size 256 --n_aug 500 --d_model 128 --n_layers 3 --n_estimators 100 --projector_epochs 200
 ```
 
 After all 6 finish, commit and push:

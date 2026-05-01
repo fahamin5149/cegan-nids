@@ -22,9 +22,9 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 # Dataset dimension registry (used only for synthetic fallback)
 DS_CONFIG: dict = {
-    "nsl_kdd":     {"n_features": 41,  "n_classes": 5,  "max_samples": None},
-    "unsw_nb15":   {"n_features": 43,  "n_classes": 10, "max_samples": 100_000},
-    "cic_ids2017": {"n_features": 78,  "n_classes": 15, "max_samples": 100_000},
+    "nsl_kdd":     {"n_features": 41,  "n_classes": 5,  "max_samples": 50_000},
+    "unsw_nb15":   {"n_features": 43,  "n_classes": 10, "max_samples": 50_000},
+    "cic_ids2017": {"n_features": 78,  "n_classes": 15, "max_samples": 50_000},
 }
 
 

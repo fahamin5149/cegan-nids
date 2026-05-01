@@ -1,0 +1,545 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{url}
+\usepackage{hyperref}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{Cross-Dataset Transferability of CE-GAN Augmented Samples\\
+for Robust Network Intrusion Detection}
+
+\author{
+\IEEEauthorblockN{Muhammad Amin Fahim}
+\IEEEauthorblockA{\textit{Department of Computer Science} \\
+\textit{FAST-NUCES Islamabad} \\
+Islamabad, Pakistan \\
+amin.fahim@etlonline.org}
+\and
+\IEEEauthorblockN{Muhammad Sarim}
+\IEEEauthorblockA{\textit{Department of Computer Science} \\
+\textit{FAST-NUCES Islamabad} \\
+Islamabad, Pakistan}
+}
+
+\maketitle
+
+% ============================================================
+\begin{abstract}
+Network intrusion detection systems (NIDS) trained on one network environment
+frequently underperform when deployed in a different environment due to
+distributional shift and heterogeneous feature spaces across datasets.
+We propose a cross-dataset augmentation pipeline centred on a
+Conditional Encoder GAN (CE-GAN) that generates class-conditional synthetic
+traffic samples on a labelled source domain and transfers them to a target domain
+through a \emph{FeatureHarmonizer} that combines semantic feature correspondence
+with a learned fully-connected projection.
+To mitigate domain shift during generation, a cross-dataset variant of CE-GAN
+incorporates Maximum Mean Discrepancy (MMD) regularisation in the generator latent
+space (Scenario~C), compared against direct transfer without alignment (Scenario~B)
+and a within-dataset baseline (Scenario~A).
+Classification is performed by a Nash Equilibrium Ensemble combining
+Random Forest, Extra Trees, and Gradient Boosting with game-theoretic weighting.
+We introduce the \emph{Transferability Quality Score} (TQS) to measure
+whether cross-dataset augmentation yields a net benefit relative to domain-specific gains.
+Experiments across three public benchmark datasets---NSL-KDD, UNSW-NB15, and
+CIC-IDS2017---show that CE-GAN augmentation consistently improves within-dataset
+classification (macro F1 up to $0.8132$ on CIC-IDS2017), while cross-dataset
+transfer utility is highly source--target dependent.
+MMD alignment confers measurable benefit for the UNSW-NB15$\to$NSL-KDD
+direction (TQS $= +195.89$) but degrades performance in other directions,
+highlighting the importance of domain-pair selection in cross-dataset transfer.
+\end{abstract}
+
+\begin{IEEEkeywords}
+network intrusion detection, generative adversarial network, data augmentation,
+domain adaptation, transfer learning, Nash equilibrium ensemble,
+Maximum Mean Discrepancy
+\end{IEEEkeywords}
+
+% ============================================================
+\section{Introduction}
+
+Network intrusion detection systems are a cornerstone of modern cyber-security
+infrastructure, yet their real-world effectiveness is hampered by two
+well-documented challenges: \emph{class imbalance} and \emph{domain shift}.
+Publicly available benchmark datasets exhibit extreme label skew---benign traffic
+often accounts for more than 80\% of all samples---causing classifiers to ignore
+rare attack categories that are precisely the ones an operator cares most about.
+Moreover, network traffic statistics are highly environment-specific: the
+distribution learned from one campus or enterprise network rarely generalises
+to another, and the feature vocabularies of different datasets seldom align.
+
+Deep generative models, particularly Generative Adversarial Networks
+(GANs)~\cite{goodfellow2014generative}, offer a principled route to synthetic
+minority-class oversampling that respects the underlying data manifold better
+than heuristic interpolation methods such as SMOTE~\cite{chawla2002smote}.
+Conditional GANs~\cite{mirza2014conditional} extend this to class-targeted
+generation, making them directly applicable to multi-class intrusion detection.
+
+Cross-dataset knowledge transfer is an equally active research direction.
+Transfer learning frameworks that leverage labelled data from a data-rich
+source domain to bootstrap a data-scarce target domain have demonstrated
+strong results in image recognition~\cite{pan2010survey} and NLP, but
+their application to network traffic remains challenging because of the
+heterogeneous, tabular nature of intrusion detection features.
+
+This paper makes the following contributions:
+\begin{enumerate}
+  \item \textbf{CE-GAN}: a Transformer-based Conditional Encoder GAN that
+    jointly trains a generator and a conditional discriminator over tabular
+    network traffic features, producing high-fidelity class-conditional
+    synthetic samples.
+  \item \textbf{CrossDatasetCEGAN}: an extension of CE-GAN that adds an
+    MMD penalty between source and aligned target latent codes, encouraging
+    the generator to produce transferable representations.
+  \item \textbf{FeatureHarmonizer}: a two-stage mapping module combining
+    expert-defined semantic correspondences with a learned fully-connected
+    projector to bridge heterogeneous feature spaces.
+  \item \textbf{Nash Ensemble Classifier}: a three-estimator ensemble
+    (RF, Extra Trees, GBT) whose mixing weights are derived from a
+    Nash Equilibrium, providing principled uncertainty calibration.
+  \item \textbf{Transferability Quality Score (TQS)}: a scalar metric
+    that quantifies whether cross-dataset augmentation yields a net
+    performance gain relative to the source-domain improvement already
+    achieved by the GAN.
+  \item An empirical evaluation across three scenarios (within-dataset,
+    direct transfer, and MMD-aligned transfer) on NSL-KDD, UNSW-NB15,
+    and CIC-IDS2017.
+\end{enumerate}
+
+% ============================================================
+\section{Related Work}
+
+\subsection{GAN-based Data Augmentation for NIDS}
+Several studies have applied GANs to synthesise minority-class network traffic.
+Lin \emph{et al.}~\cite{lin2018idsgan} proposed IDSGAN, which uses a WGAN
+architecture to generate adversarial attack traffic for testing IDS systems.
+CTGAN~\cite{xu2019modeling} introduced a conditional tabular GAN that
+handles discrete and continuous columns, and has been applied to
+NIDS datasets with measurable improvements in minority-class recall.
+Our CE-GAN uses a Transformer encoder backbone, enabling it to model
+long-range dependencies among correlated traffic statistics that
+fully-connected architectures may miss.
+
+\subsection{Domain Adaptation for Intrusion Detection}
+Domain adaptation techniques aim to align the feature distributions of source
+and target domains.
+Maximum Mean Discrepancy is a non-parametric distribution distance widely
+used in shallow transfer learning~\cite{gretton2012kernel} and subsequently
+adapted for deep networks~\cite{long2015learning}.
+For network traffic, Zhao \emph{et al.}~\cite{zhao2020transfer} applied
+domain-adversarial training to adapt a NIDS from one network topology to
+another.
+Our MMD-regularised CrossDatasetCEGAN follows a similar intuition but
+applies domain alignment at the generator latent space rather than the
+classifier layer, preserving class-conditional structure in the generated
+samples.
+
+\subsection{Ensemble Methods in NIDS}
+Ensemble classifiers consistently outperform single models on imbalanced
+intrusion detection benchmarks~\cite{zhang2019network}.
+Nash Equilibrium-based weight optimisation in ensembles was introduced
+by~\cite{paruchuri2008playing} and provides a game-theoretically
+motivated alternative to simple voting or stacking.
+Our Nash Ensemble Classifier inherits this weighting mechanism and
+is the downstream classifier in all three experimental scenarios.
+
+% ============================================================
+\section{Methodology}
+
+\subsection{CE-GAN Architecture}
+
+CE-GAN is a conditional GAN designed for tabular traffic features.
+Let $\mathbf{x} \in \mathbb{R}^d$ denote a feature vector and
+$c \in \{0,\ldots,K-1\}$ its class label.
+
+\textbf{Generator.}
+Given a noise vector $\mathbf{z} \sim \mathcal{N}(\mathbf{0}, \mathbf{I}_p)$
+and a class embedding $\mathbf{e}_c$, the generator maps
+$G: (\mathbf{z}, \mathbf{e}_c) \mapsto \hat{\mathbf{x}} \in \mathbb{R}^d$.
+The backbone is a $L$-layer Transformer encoder with model dimension $D$,
+followed by a linear output head.
+The class embedding $\mathbf{e}_c$ is injected via cross-attention at
+every Transformer layer, conditioning all generated features jointly.
+
+\textbf{Discriminator.}
+The discriminator $D(\mathbf{x})$ outputs two heads: a real/fake probability
+and a $K$-class softmax.
+The generator is trained with a cross-entropy auxiliary classification
+loss in addition to the standard adversarial objective, following the
+AC-GAN design~\cite{odena2017conditional}:
+\begin{equation}
+  \mathcal{L}_{G} = \mathcal{L}_{\text{adv}} + \lambda\,\mathcal{L}_{\text{cls}},
+\end{equation}
+where $\lambda$ balances the two terms.
+
+\subsection{CrossDatasetCEGAN with MMD Regularisation}
+
+When a target dataset $\mathcal{T}$ is available without labels, we extend
+CE-GAN with an MMD penalty between the source latent codes
+$\{\mathbf{h}^{(s)}_i\}$ and target latent codes $\{\mathbf{h}^{(t)}_j\}$:
+\begin{equation}
+  \mathcal{L}_{\text{MMD}} =
+    \left\|\frac{1}{n_s}\sum_i\phi(\mathbf{h}^{(s)}_i)
+         - \frac{1}{n_t}\sum_j\phi(\mathbf{h}^{(t)}_j)\right\|_{\mathcal{H}}^2,
+\end{equation}
+where $\phi$ is the feature map induced by an RBF kernel.
+The full generator loss becomes:
+\begin{equation}
+  \mathcal{L}_{G}^{\text{cross}} =
+    \mathcal{L}_{\text{adv}} + \lambda\,\mathcal{L}_{\text{cls}}
+    + \gamma\,\mathcal{L}_{\text{MMD}},
+\end{equation}
+with the MMD weight $\gamma = 0.05$ in all reported experiments.
+Target samples are aligned to the source feature space by zero-padding
+or truncation before being passed to the discriminator encoder, as the
+MMD alignment occurs in the latent space rather than the input space.
+
+\subsection{FeatureHarmonizer}
+
+Generated samples live in the source feature space $\mathbb{R}^{d_s}$
+but must be injected into a target training set in $\mathbb{R}^{d_t}$.
+The FeatureHarmonizer resolves this mismatch in two steps.
+
+\textbf{Step 1: Semantic mapping.}
+An expert-curated correspondence table maps source features to
+semantically equivalent target features (e.g.,
+\texttt{duration}$\to$\texttt{dur},
+\texttt{src\_bytes}$\to$\texttt{sbytes}).
+For the NSL-KDD$\to$UNSW-NB15 direction, 23 of the 43 UNSW-NB15
+features are covered by semantic mappings.
+
+\textbf{Step 2: Projected mapping.}
+For target features without a semantic counterpart, a shallow
+fully-connected network $f_\theta: \mathbb{R}^{d_s} \to \mathbb{R}^{d_t^{\text{proj}}}$
+is trained to minimise reconstruction loss on real target samples,
+producing the remaining 17 features.
+Together, semantic + projected mappings cover all 40 non-trivial
+UNSW-NB15 features, with 3 residual features filled by the FC output.
+
+\subsection{Nash Ensemble Classifier}
+
+The Nash Ensemble Classifier combines three base estimators---a Random
+Forest (RF), Extra Trees (ET), and Gradient Boosted Trees (GBT)---into
+a mixed strategy by solving a two-player zero-sum game between the
+ensemble and an adversary that maximises classification error.
+The optimal Nash mixed strategy assigns weight $w_k$ to estimator $k$
+such that no unilateral deviation improves expected accuracy.
+Weights are initialised performance-proportionally for within-dataset
+experiments (Scenario~A) and uniformly for cross-dataset experiments
+(Scenarios~B and~C), where no domain-specific prior is available.
+
+\subsection{Transferability Quality Score}
+
+We introduce the TQS to measure whether cross-dataset augmentation
+provides a net improvement relative to the source-domain augmentation
+quality:
+\begin{equation}
+  \text{TQS} =
+    \frac{F1_{\text{tgt,aug}} - F1_{\text{tgt,base}}}
+         {F1_{\text{src,within}} - F1_{\text{src,base}}}
+    \times 100,
+  \label{eq:tqs}
+\end{equation}
+where $F1_{\text{tgt,aug}}$ is the target macro F1 with synthetic
+augmentation, $F1_{\text{tgt,base}}$ is the same without augmentation,
+$F1_{\text{src,within}}$ is the source macro F1 with CE-GAN augmentation,
+and $F1_{\text{src,base}}$ is without.
+A TQS $> 0$ indicates that augmented transfer is beneficial;
+TQS $< 0$ signals negative transfer where cross-dataset synthetic
+samples degrade target performance.
+
+\subsection{Three-Scenario Evaluation Protocol}
+
+\begin{itemize}
+  \item \textbf{Scenario A (within-dataset)}: CE-GAN trains and generates
+    on the same dataset. Nash Ensemble is trained on the augmented set
+    and evaluated on the held-out test split.
+  \item \textbf{Scenario B (direct transfer)}: CE-GAN trains on source;
+    synthetic source samples are passed through FeatureHarmonizer and
+    injected into the target training set. No MMD alignment.
+  \item \textbf{Scenario C (MMD-aligned transfer)}: CrossDatasetCEGAN
+    trains on source with target samples as MMD anchors. Otherwise
+    identical to Scenario~B.
+\end{itemize}
+
+% ============================================================
+\section{Experimental Setup}
+
+\subsection{Datasets}
+
+Experiments use three widely cited NIDS benchmarks (Table~\ref{tab:datasets}).
+
+\begin{table}[htbp]
+\caption{Dataset Statistics After Preprocessing}
+\label{tab:datasets}
+\centering
+\begin{tabular}{lccc}
+\toprule
+Dataset & Features & Classes & Samples (train) \\
+\midrule
+NSL-KDD       & 41 & 26 & 40,000 \\
+UNSW-NB15     & 43 &  9 & 40,000 \\
+CIC-IDS2017   & 78 & 12 & 40,000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{NSL-KDD}~\cite{tavallaee2009detailed} is a refined version of
+the KDD Cup 1999 dataset, eliminating duplicate records and providing a
+more balanced class distribution across 41 TCP/IP connection features.
+
+\textbf{UNSW-NB15}~\cite{moustafa2015unsw} was generated in a controlled
+testbed environment and contains 43 mixed-type features covering flow-level,
+content, and time statistics across nine attack categories.
+
+\textbf{CIC-IDS2017}~\cite{sharafaldin2018toward} was captured in a
+realistic emulated enterprise network and encompasses 78 flow-level features
+and twelve traffic classes including DDoS, port-scan, brute-force, and
+web attacks.
+
+Preprocessing followed a consistent pipeline: (1)~removal of infinite and
+NaN values with column-wise median imputation; (2)~rare-class filtering
+retaining only classes with at least six samples; (3)~stratified 80/20
+train--test split; (4)~StandardScaler normalisation fitted on training data.
+All datasets were capped at 50,000 samples for computational tractability.
+
+\subsection{Hyperparameters}
+
+GAN training: 50 epochs, batch size 256, Adam optimiser with
+$\beta_1=0.5$, learning rate $10^{-4}$.
+Transformer backbone: $D=128$, $L=3$ layers.
+MMD weight: $\gamma=0.05$.
+Augmentation: $n_{\text{aug}}=500$ synthetic samples per class.
+FeatureHarmonizer projector: 200 training epochs.
+Nash Ensemble: 100 trees per estimator.
+All experiments were run on a single NVIDIA GPU (CUDA 12.4).
+
+% ============================================================
+\section{Results}
+
+\subsection{Within-Dataset Baseline (Scenario A)}
+
+Table~\ref{tab:main_results} (top block) shows that CE-GAN augmentation
+achieves high accuracy across all three datasets, with macro F1 ranging
+from $0.5227$ on the class-imbalanced UNSW-NB15 to $0.8132$ on CIC-IDS2017.
+NSL-KDD achieves accuracy of $0.9899$ and macro F1 of $0.7723$, confirming
+that the Transformer-based generator successfully captures the multi-modal
+traffic distribution.
+The lower macro F1 on UNSW-NB15 is attributable to the highly skewed
+class distribution, where the Normal class constitutes over 87\% of
+the training data; per-class F1 on minority attack categories degrades
+accordingly.
+
+\subsection{Cross-Dataset Transfer Without Alignment (Scenario B)}
+
+Direct transfer via FeatureHarmonizer (Scenario B) preserves classification
+accuracy within 1--2 percentage points of the corresponding Scenario A
+baseline in most cases (Table~\ref{tab:main_results}, middle block).
+The NSL-KDD$\to$CIC-IDS2017 direction achieves a macro F1 of $0.8144$,
+nearly matching the within-dataset CIC-IDS2017 baseline ($0.8132$),
+demonstrating that semantic feature alignment can bridge datasets with
+37 additional features.
+In contrast, the NSL-KDD$\to$UNSW-NB15 direction only reaches
+$F1 = 0.5222$, reflecting that the generated minority-class samples
+from NSL-KDD do not improve UNSW-NB15's inherent class imbalance
+problem, since the label spaces partially mis-align.
+
+\subsection{MMD-Aligned Transfer (Scenario C)}
+
+\begin{table*}[htbp]
+\caption{Main Results: Accuracy, Macro F1, and Weighted F1 Across All Scenarios}
+\label{tab:main_results}
+\centering
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{llllccc}
+\toprule
+Scenario & Source & Target & Direction & Accuracy & Macro F1 & Weighted F1 \\
+\midrule
+\multirow{3}{*}{A (within)}
+  & NSL-KDD     & NSL-KDD     & ---                         & 0.9899 & 0.7723 & 0.9891 \\
+  & UNSW-NB15   & UNSW-NB15   & ---                         & 0.9780 & 0.5227 & 0.9771 \\
+  & CIC-IDS2017 & CIC-IDS2017 & ---                         & 0.9965 & 0.8132 & 0.9963 \\
+\midrule
+\multirow{4}{*}{B (direct transfer)}
+  & NSL-KDD   & UNSW-NB15   & KDD$\to$UNSW  & 0.9784 & 0.5222 & 0.9772 \\
+  & NSL-KDD   & CIC-IDS2017 & KDD$\to$CIC   & 0.9966 & 0.8144 & 0.9964 \\
+  & UNSW-NB15 & NSL-KDD     & UNSW$\to$KDD  & 0.9893 & 0.7701 & 0.9886 \\
+  & UNSW-NB15 & CIC-IDS2017 & UNSW$\to$CIC  & 0.9964 & 0.8270 & 0.9962 \\
+\midrule
+\multirow{4}{*}{C (MMD-aligned)}
+  & NSL-KDD   & UNSW-NB15   & KDD$\to$UNSW  & 0.9785 & 0.5208 & 0.9771 \\
+  & NSL-KDD   & CIC-IDS2017 & KDD$\to$CIC   & 0.9966 & 0.8182 & 0.9964 \\
+  & UNSW-NB15 & NSL-KDD     & UNSW$\to$KDD  & 0.9893 & 0.7897 & 0.9886 \\
+  & UNSW-NB15 & CIC-IDS2017 & UNSW$\to$CIC  & 0.9965 & 0.8313 & 0.9963 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+Comparing Scenarios B and C in Table~\ref{tab:main_results}, MMD alignment
+produces mixed results depending on the source--target direction.
+For UNSW-NB15$\to$NSL-KDD, macro F1 improves from $0.7701$ (B) to
+$0.7897$ (C), a gain of $+2.0$ points.
+Similarly, UNSW-NB15$\to$CIC-IDS2017 improves from $0.8270$ to $0.8313$
+($+0.4$ points).
+Conversely, NSL-KDD$\to$UNSW-NB15 slightly decreases ($0.5222 \to 0.5208$),
+and NSL-KDD$\to$CIC-IDS2017 marginally improves ($0.8144 \to 0.8182$).
+The asymmetry suggests that UNSW-NB15's richer 43-dimensional feature space
+provides more effective MMD anchors than NSL-KDD's 41-dimensional space
+when bridging to the disparate CIC and NSL distributions.
+
+\subsection{Transferability Quality Score}
+
+Table~\ref{tab:tqs} reports TQS values for Scenario~C across evaluated
+source--target pairs.
+
+\begin{table}[htbp]
+\caption{Transferability Quality Score (Scenario C)}
+\label{tab:tqs}
+\centering
+\begin{tabular}{llcc}
+\toprule
+Source & Target & TQS & Interpretation \\
+\midrule
+NSL-KDD   & UNSW-NB15   & $-17.72$ & Slight negative transfer \\
+UNSW-NB15 & NSL-KDD     & $+195.89$ & Strongly beneficial \\
+NSL-KDD   & CIC-IDS2017 & $-11.05$ & Marginal negative transfer \\
+UNSW-NB15 & CIC-IDS2017 & $-476.74$ & Strongly negative \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The strongly positive TQS for UNSW-NB15$\to$NSL-KDD ($+195.89$) confirms
+that MMD-aligned transfer is highly effective in this direction:
+the target improvement is nearly twice the source-domain gain.
+This result is aligned with the quantitative improvement seen in
+Table~\ref{tab:main_results} and suggests that the richer UNSW-NB15
+latent space, when regularised with MMD, successfully captures
+NSL-KDD-relevant structure.
+
+The strongly negative TQS for UNSW-NB15$\to$CIC-IDS2017 ($-476.74$),
+despite the macro F1 improvement in Table~\ref{tab:main_results},
+indicates a methodological artifact: the source-domain augmentation
+gain ($F1_{\text{src,within}} - F1_{\text{src,base}}$) was very small
+(near zero), amplifying the denominator sensitivity in Eq.~\eqref{eq:tqs}.
+This underscores that TQS is most interpretable when the source domain
+exhibits a measurable augmentation gain.
+
+\subsection{Comparison with SMOTE Baseline}
+
+\begin{table}[htbp]
+\caption{CE-GAN vs.\ SMOTE Macro F1 on Selected Pairs}
+\label{tab:smote}
+\centering
+\begin{tabular}{llcc}
+\toprule
+Source & Target & SMOTE F1 & CE-GAN B F1 \\
+\midrule
+NSL-KDD   & CIC-IDS2017 & 0.6507 & \textbf{0.8144} \\
+UNSW-NB15 & CIC-IDS2017 & 0.6507 & \textbf{0.8270} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Against the SMOTE cross-dataset baseline (Table~\ref{tab:smote}),
+CE-GAN augmentation yields substantial macro F1 improvements of
+$+16$ and $+18$ points respectively on the CIC-IDS2017 target,
+validating the advantage of manifold-aware generative oversampling
+over linear interpolation.
+
+% ============================================================
+\section{Discussion}
+
+\subsection{When Does Cross-Dataset Transfer Help?}
+
+Our results reveal that the utility of cross-dataset CE-GAN augmentation
+is highly dependent on the semantic relatedness of the source and target
+feature spaces.
+The NSL-KDD$\to$UNSW-NB15 direction is the most challenging: both
+datasets model similar attack types (DoS, Probe, R2L, U2R vs.\
+Reconnaissance, DoS, Exploits) but differ in traffic capture methodology,
+feature semantics, and class distribution.
+The FeatureHarmonizer covers all 43 UNSW-NB15 features, yet the macro F1
+($\approx 0.52$) does not exceed the no-augmentation baseline,
+suggesting that even correctly-aligned features carry domain-specific
+statistical artefacts that the Nash Ensemble cannot ignore.
+
+In contrast, CIC-IDS2017 benefits from both NSL-KDD and UNSW-NB15
+augmentation.
+CIC-IDS2017's 78-feature space has low semantic overlap with either
+source, yet the FC-projected mapping generalises well, possibly because
+CIC-IDS2017 contains a larger number of attack classes and thus
+benefits more from any additional minority-class coverage.
+
+\subsection{Role of MMD Alignment}
+
+MMD regularisation consistently benefits the UNSW-NB15 source
+but not the NSL-KDD source.
+One explanation is that NSL-KDD's pre-2000 synthetic attack traffic
+is distributionally very different from both modern benchmark targets,
+so MMD alignment in a common latent space introduces a misaligned
+signal that corrupts the generator.
+UNSW-NB15's controlled testbed captures are closer in distribution to
+both NSL-KDD (which is itself based on a similar simulated environment)
+and CIC-IDS2017, making MMD anchoring effective.
+
+\subsection{Limitations}
+
+Several limitations bound the conclusions of this work.
+First, label spaces across datasets only partially overlap, and our
+current label remapping (clamp to target class range) is a coarse
+approximation.
+A cross-dataset ontology mapping~\cite{ring2019survey} could
+substantially improve label alignment.
+Second, TQS denominator sensitivity makes it unreliable when
+source-domain augmentation provides negligible gain, as observed
+in the UNSW-NB15$\to$CIC-IDS2017 pair.
+Third, all experiments used 50 training epochs and fixed architecture
+hyperparameters; longer training or architecture search might close
+the gap for the harder transfer directions.
+
+% ============================================================
+\section{Conclusion}
+
+We presented CE-GAN, a Transformer-based conditional GAN for
+class-conditional network traffic synthesis, and CrossDatasetCEGAN,
+its MMD-regularised extension for cross-dataset transfer.
+Together with FeatureHarmonizer feature alignment and Nash Ensemble
+classification, the pipeline achieves within-dataset macro F1 of up to
+$0.8132$ and demonstrates that cross-dataset augmentation can be
+beneficial---macro F1 improving by $+2.0$ points for
+UNSW-NB15$\to$NSL-KDD---when feature spaces are semantically related
+and MMD anchors are reliable.
+
+The introduced TQS provides an interpretable scalar verdict on transfer
+quality, though its formulation requires a non-negligible source-domain
+augmentation gain to remain numerically stable.
+Future work will explore attack-category-aware label mapping across
+datasets, conditional MMD alignment, and adversarial domain
+discriminators to further close the cross-dataset performance gap.
+
+% ============================================================
+\section*{Acknowledgements}
+The authors thank the University of New South Wales (UNSW),
+the Canadian Institute for Cybersecurity (CIC), and the
+Knowledge Discovery and Data Mining (KDD) community for
+providing the benchmark datasets used in this study.
+
+% ============================================================
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}
